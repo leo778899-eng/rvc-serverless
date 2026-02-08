@@ -1,32 +1,30 @@
-# 使用官方基础镜像
+# 1. 使用 RunPod 官方基础镜像
 FROM runpod/pytorch:2.0.1-py3.10-cuda11.8.0-devel
 
-# 1. 安装系统级依赖 (补充了 LLVM，防止 llvmlite 报错)
+# 2. 安装系统依赖 (增加了 ninja-build，防止 fairseq 偶尔抽风)
 USER root
 RUN apt-get update && \
-    apt-get install -y ffmpeg build-essential git gcc g++ && \
+    apt-get install -y ffmpeg build-essential gcc g++ ninja-build && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# 2. 复制文件
+# 3. 复制文件
 COPY requirements.txt .
 COPY handler.py .
 
-# 3. 升级基础工具 (先把造房子的工具修好)
+# 4. 升级 pip
 RUN pip install --upgrade pip setuptools wheel
 
-# 4. 单独安装核心编译环境 (关键！很多库安装失败就是因为缺 Cython)
-# 强制安装旧版 Numpy 防止版本冲突
+# 5. 安装核心依赖 (锁定 numpy 版本，防止冲突)
 RUN pip install "numpy<2" "cython<3"
 
-# 5. 单独安装 Fairseq (最容易报错的库，我们单独处理)
-# 使用 --no-build-isolation 确保它能用到上面安装好的 numpy
-RUN pip install --no-build-isolation git+https://github.com/facebookresearch/fairseq.git
+# 6. 安装 Fairseq (直接从 PyPI 安装 0.12.2 稳定版，不要用 git 了！)
+RUN pip install fairseq==0.12.2
 
-# 6. 安装剩下的库
+# 7. 安装剩下的库
 RUN pip install -r requirements.txt
 
-# 7. 启动
+# 8. 启动
 CMD [ "python", "-u", "/app/handler.py" ]
