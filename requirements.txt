@@ -1,0 +1,17 @@
+# 核心依赖
+runpod
+numpy<2
+audio-separator[gpu]
+onnxruntime-gpu
+
+# RVC 需要的依赖 (精简版)
+faiss-gpu
+fairseq
+gradio==3.41.2
+librosa
+llvmlite
+scikit-learn
+torchcrepe
+# 如果你需要 web 框架处理其他逻辑
+fastapi
+uvicorn
