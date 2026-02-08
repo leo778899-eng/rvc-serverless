@@ -2,11 +2,8 @@ runpod
 audio-separator[gpu]
 onnxruntime-gpu
 faiss-gpu
-# 锁定 gradio 版本以防止 API 变动
 gradio==3.41.2
 librosa
 llvmlite
 scikit-learn
 torchcrepe
-# 使用 git 直接安装 fairseq 的稳定版（比 pip install fairseq 更不容易报错）
-git+https://github.com/facebookresearch/fairseq.git@main
