@@ -12,46 +12,41 @@ MODEL_URL = "https://www.toponedumps.com/wukong_v2.pth"
 MODEL_NAME = "wukong_v2.pth" 
 INDEX_NAME = "trained_IVF3062_Flat_nprobe_1_wukong_v2_v2.index"
 
-# ==========================================
-# 2. 自动寻找 RVC 脚本 (关键修复功能) 🕵️‍♂️
-# ==========================================
-def find_rvc_script():
-    # 这里列出所有可能的藏身之处
-    possible_paths = [
-        "/app/tools/infer_cli.py",
-        "/app/infer_cli.py",             # 很多镜像直接放在根目录
-        "/workspace/tools/infer_cli.py",
-        "/workspace/infer_cli.py",
-        "/app/RVC/tools/infer_cli.py",
-        "/tools/infer_cli.py"
-    ]
-    
-    print("🔍 正在自动寻找 RVC 推理脚本...")
-    for path in possible_paths:
-        if os.path.exists(path):
-            print(f"✅ 找到了！脚本路径是: {path}")
-            return path
-    
-    # 如果都找不到，打印当前目录结构帮我们调试
-    print("❌ 没找到 infer_cli.py！正在打印 /app 目录结构供调试:")
-    for root, dirs, files in os.walk("/app"):
-        for file in files:
-            print(os.path.join(root, file))
-    return None
-
-# 获取脚本路径
-RVC_INFER_SCRIPT = find_rvc_script()
+# 定义 RVC 代码仓库地址 (使用官方或稳定的 Fork)
+RVC_GIT_URL = "https://github.com/RVC-Project/Retrieval-based-Voice-Conversion-WebUI.git"
+RVC_DIR = "/app/RVC_Code"  # 我们把代码下载到这里
 
 # ==========================================
 
 BASE_DIR = "/app"
 OUTPUT_DIR = "/app/output"
-WEIGHTS_DIR = "/app/weights" 
+WEIGHTS_DIR = os.path.join(RVC_DIR, "weights") # ⚠️ 模型必须放在 RVC 代码目录下的 weights 里
 os.makedirs(OUTPUT_DIR, exist_ok=True)
-os.makedirs(WEIGHTS_DIR, exist_ok=True)
 
+# 1. 检查并下载 RVC 代码 (如果没有的话) 🛠️
+if not os.path.exists(os.path.join(RVC_DIR, "tools", "infer_cli.py")):
+    print("🚀 未检测到 RVC 代码，正在从 GitHub 克隆...")
+    try:
+        # 克隆代码
+        subprocess.run(f"git clone {RVC_GIT_URL} {RVC_DIR}", shell=True, check=True)
+        print("✅ RVC 代码下载完成！")
+        
+        # 安装依赖 (这一步可能比较慢，但只需要跑一次)
+        print("📦 正在安装 RVC 依赖...")
+        subprocess.run(f"pip install -r {RVC_DIR}/requirements.txt", shell=True)
+    except Exception as e:
+        print(f"❌ RVC 代码下载失败: {e}")
+else:
+    print("✅ RVC 代码已存在。")
+
+# 重新定义路径
 local_model_path = os.path.join(WEIGHTS_DIR, MODEL_NAME)
 local_index_path = os.path.join(BASE_DIR, INDEX_NAME)
+# 脚本路径现在确定了
+RVC_INFER_SCRIPT = os.path.join(RVC_DIR, "tools", "infer_cli.py")
+
+# 确保 weights 目录存在
+os.makedirs(WEIGHTS_DIR, exist_ok=True)
 
 # === 启动检查 ===
 if not os.path.exists(local_model_path):
@@ -68,10 +63,6 @@ def download_file(url, filename):
         raise Exception(f"下载失败: {e}")
 
 def handler(job):
-    # 如果启动时没找到脚本，这里直接报错并打印目录
-    if not RVC_INFER_SCRIPT:
-        return {"status": "error", "message": "❌ 严重错误: 无法找到 infer_cli.py，请查看日志里的文件列表"}
-
     job_input = job["input"]
     song_url = job_input.get("song_url")
     pitch = job_input.get("pitch", 0) 
@@ -101,6 +92,9 @@ def handler(job):
         print(f"🤖 开始 RVC 变声 (脚本: {RVC_INFER_SCRIPT})...")
         converted_vocal = os.path.join(OUTPUT_DIR, "converted_vocal.wav")
         
+        # ⚠️ 必须切换工作目录到 RVC 文件夹，否则找不到 config
+        cwd = RVC_DIR 
+        
         cmd = [
             "python", RVC_INFER_SCRIPT,
             "--f0up_key", str(pitch),
@@ -119,7 +113,8 @@ def handler(job):
         ]
         
         print(f"执行命令: {' '.join(cmd)}")
-        result = subprocess.run(cmd, check=True, capture_output=True, text=True)
+        # cwd参数很关键，让 Python 在 RVC 目录下运行
+        result = subprocess.run(cmd, check=True, capture_output=True, text=True, cwd=cwd)
         print("RVC Output:", result.stdout)
 
         # 4. 混音
@@ -139,7 +134,7 @@ def handler(job):
                 raise Exception(f"上传失败: {resp.text}")
 
     except subprocess.CalledProcessError as e:
-        print(f"❌ RVC Error Detail:\n{e.stderr}")
+        print(f"❌ RVC Error:\n{e.stderr}")
         return {"status": "error", "message": f"RVC Failed: {e.stderr}"}
     except Exception as e:
         print(f"❌ Error: {e}")
