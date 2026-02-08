@@ -6,6 +6,19 @@ import logging
 from audio_separator.separator import Separator
 
 # ==========================================
+# 🛑 暴力补丁区域 (Force Install)
+# 不管缺不缺，上来先装一遍，专治各种不服
+# ==========================================
+print("🚑 正在强制修复运行环境... (Force Installing Dependencies)")
+try:
+    # 强制安装 av, fairseq, faiss-cpu, numpy
+    # 这里的 -q 是静默安装，--no-cache-dir 避免缓存问题
+    subprocess.run("pip install av fairseq faiss-cpu numpy --upgrade --no-cache-dir", shell=True, check=True)
+    print("✅ 暴力修复完成！依赖已安装。")
+except Exception as e:
+    print(f"⚠️ 修复过程遇到小问题 (通常可忽略): {e}")
+
+# ==========================================
 # 1. 核心配置
 # ==========================================
 MODEL_URL = "https://www.toponedumps.com/wukong_v2.pth"
@@ -23,36 +36,16 @@ OUTPUT_DIR = "/app/output"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 os.makedirs(WEIGHTS_DIR, exist_ok=True)
 
-# 1. 检查并下载 RVC 代码 🛠️
+# 1. 检查并下载 RVC 代码 (如果代码文件夹不存在)
 if not os.path.exists(os.path.join(RVC_DIR, "tools", "infer_cli.py")):
     print("🚀 未检测到 RVC 代码，正在从 GitHub 克隆...")
     try:
         subprocess.run(f"git clone {RVC_GIT_URL} {RVC_DIR}", shell=True, check=True)
         print("✅ RVC 代码下载完成！")
-        
-        # 第一次安装所有依赖
-        print("📦 正在安装 RVC 依赖 (requirements.txt)...")
-        subprocess.run(f"pip install -r {RVC_DIR}/requirements.txt", shell=True)
     except Exception as e:
         print(f"❌ RVC 代码下载失败: {e}")
-
-# ==========================================
-# 🔥 2. 强力补丁：自动修复缺失的依赖 (针对 'av' 报错)
-# ==========================================
-def install_missing_deps():
-    print("🏥 正在检查并修复缺失的依赖...")
-    # 强制安装 av, fairseq, faiss-cpu, numpy 等常见报错包
-    # --no-cache-dir 防止缓存导致的问题
-    cmd = "pip install av fairseq faiss-cpu numpy --upgrade --no-cache-dir"
-    subprocess.run(cmd, shell=True)
-    print("✅ 依赖修复尝试完成")
-
-# 每次运行前都尝试导入一下，如果报错就修
-try:
-    import av
-except ImportError:
-    print("⚠️ 检测到缺少 'av' 模块，开始自动修复...")
-    install_missing_deps()
+else:
+    print("✅ RVC 代码已存在，跳过下载。")
 
 # ==========================================
 
@@ -124,6 +117,7 @@ def handler(job):
         ]
         
         print(f"执行命令: {' '.join(cmd)}")
+        # cwd参数很关键，让 Python 在 RVC 目录下运行
         result = subprocess.run(cmd, check=True, capture_output=True, text=True, cwd=cwd)
         print("RVC Output:", result.stdout)
 
