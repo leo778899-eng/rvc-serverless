@@ -1,36 +1,39 @@
 # 1. 基础镜像
 FROM runpod/pytorch:2.0.1-py3.10-cuda11.8.0-devel
 
-# 2. 系统依赖 (确保 git 和 ninja 都在)
+# 2. 安装系统依赖 (保留 ninja 和编译器)
 USER root
 RUN apt-get update && \
-    apt-get install -y ffmpeg build-essential gcc g++ ninja-build git && \
+    apt-get install -y ffmpeg build-essential gcc g++ ninja-build && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# 3. 升级工具链
-RUN pip install --upgrade pip setuptools wheel
-
-# 4. 铺路：先安装 Cython 和 Numpy
-# 这是最关键的一步，必须在安装 fairseq 之前存在
-RUN pip install "numpy<2" "cython<3"
-
-# 5. 【核心修复】手动下载源码并强制安装
-# 使用 --no-build-isolation 参数，强制它使用上面装好的 numpy
-RUN git clone https://github.com/facebookresearch/fairseq.git && \
-    cd fairseq && \
-    pip install --no-build-isolation . && \
-    cd .. && \
-    rm -rf fairseq
-
-# 6. 复制剩余文件
+# 3. 复制文件
 COPY requirements.txt .
 COPY handler.py .
 
-# 7. 安装剩下的库 (requirements.txt 里千万别再写 fairseq 了)
+# ========================================================
+# 🛑 核心修复区：时光倒流 🛑
+# fairseq 0.12.2 必须要用旧版的 setuptools 和 Cython 才能编译成功
+# ========================================================
+
+# 4. 强制降级构建工具 (这是最关键的一步！)
+# setuptools<60: 恢复旧版打包功能
+# Cython<3: 恢复旧版编译语法
+# numpy<2: 恢复旧版数学库
+RUN pip install --upgrade pip && \
+    pip install "setuptools<60.0.0" "Cython<3.0.0" "numpy<2.0.0" wheel
+
+# 5. 安装 Fairseq
+# --no-build-isolation: 告诉 pip "用我刚才降级好的旧工具来编译"，不要自己去下新的
+RUN pip install --no-build-isolation fairseq==0.12.2
+
+# ========================================================
+
+# 6. 安装剩下的库 (requirements.txt 里不要有 fairseq 和 numpy)
 RUN pip install -r requirements.txt
 
-# 8. 启动
+# 7. 启动
 CMD [ "python", "-u", "/app/handler.py" ]
