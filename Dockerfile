@@ -1,26 +1,32 @@
-# 使用 RunPod 官方基础镜像
+# 使用官方基础镜像
 FROM runpod/pytorch:2.0.1-py3.10-cuda11.8.0-devel
 
-# === 1. 安装系统级依赖 (增强版) ===
-# 增加了 build-essential 和 gcc，防止 pip 安装失败
+# 1. 安装系统级依赖 (补充了 LLVM，防止 llvmlite 报错)
 USER root
 RUN apt-get update && \
-    apt-get install -y ffmpeg build-essential python3-dev gcc g++ && \
+    apt-get install -y ffmpeg build-essential git gcc g++ && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# === 2. 设置工作目录 ===
 WORKDIR /app
 
-# === 3. 复制依赖文件 ===
+# 2. 复制文件
 COPY requirements.txt .
 COPY handler.py .
 
-# === 4. 安装 Python 依赖 ===
-# 使用 --no-cache-dir 减小体积，并先单独安装容易报错的 numpy
-RUN pip install --upgrade pip && \
-    pip install --no-cache-dir "numpy<2" && \
-    pip install --no-cache-dir -r requirements.txt
+# 3. 升级基础工具 (先把造房子的工具修好)
+RUN pip install --upgrade pip setuptools wheel
 
-# === 5. 设置启动命令 ===
+# 4. 单独安装核心编译环境 (关键！很多库安装失败就是因为缺 Cython)
+# 强制安装旧版 Numpy 防止版本冲突
+RUN pip install "numpy<2" "cython<3"
+
+# 5. 单独安装 Fairseq (最容易报错的库，我们单独处理)
+# 使用 --no-build-isolation 确保它能用到上面安装好的 numpy
+RUN pip install --no-build-isolation git+https://github.com/facebookresearch/fairseq.git
+
+# 6. 安装剩下的库
+RUN pip install -r requirements.txt
+
+# 7. 启动
 CMD [ "python", "-u", "/app/handler.py" ]
