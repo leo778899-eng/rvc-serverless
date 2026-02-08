@@ -2,7 +2,7 @@ import runpod
 import os
 import subprocess
 import requests
-import logging  # <--- 1. 新增：引入日志模块
+import logging
 from audio_separator.separator import Separator
 
 # ==========================================
@@ -40,7 +40,6 @@ if not os.path.exists(local_model_path):
 else:
     print("✅ 模型已存在，跳过下载。")
 
-# 检查 GitHub 的 Index 文件
 if os.path.exists(local_index_path):
     print(f"✅ 找到索引文件: {INDEX_NAME}")
 else:
@@ -68,21 +67,17 @@ def handler(job):
         return {"error": "❌ 请提供 song_url 参数"}
 
     try:
-        # 1. 下载用户上传的歌曲
+        # 1. 下载
         local_song = os.path.join(OUTPUT_DIR, "input_song.mp3")
         download_file(song_url, local_song)
         print("✅ 歌曲下载成功")
 
-        # 2. UVR5 分离 (这里是刚才报错的地方，已修复)
+        # 2. UVR5 分离
         print("✂️ 开始 UVR5 分离...")
-        
-        # <--- 2. 修改：使用 logging.INFO 替代 'info'
-        separator = Separator(log_level=logging.INFO, output_dir=OUTPUT_DIR) 
-        
+        separator = Separator(log_level=logging.INFO, output_dir=OUTPUT_DIR)
         separator.load_model(model_filename='UVR-MDX-NET-Inst_HQ_3.onnx')
         output_files = separator.separate(local_song)
         
-        # 自动识别分离后的文件
         backing_path = None
         vocal_path = None
         for f in output_files:
@@ -96,8 +91,6 @@ def handler(job):
         # 3. RVC 变声 (模拟流程)
         print(f"🤖 开始 RVC 变声处理 (使用模型: {MODEL_NAME})...")
         converted_vocal = os.path.join(OUTPUT_DIR, "converted_vocal.wav")
-        
-        # ⚠️ 临时逻辑：直接复制人声（为了先跑通 UVR5）
         subprocess.run(f"cp '{vocal_path}' '{converted_vocal}'", shell=True)
 
         # 4. 混音
@@ -106,22 +99,32 @@ def handler(job):
         cmd = f'ffmpeg -y -i "{converted_vocal}" -i "{backing_path}" -filter_complex "[0:a]volume=1.5[a1];[1:a]volume=1.0[a2];[a1][a2]amix=inputs=2:duration=longest" "{final_mix}"'
         subprocess.run(cmd, shell=True, check=True)
 
-        # 5. 上传结果
-        print("⬆️ 上传最终作品...")
+        # 5. 上传结果 (已更换为 file.io)
+        print("⬆️ 上传最终作品到 file.io ...")
+        
         with open(final_mix, 'rb') as f:
-            upload_resp = requests.put(f'https://transfer.sh/rvc_result.mp3', data=f)
-            download_link = upload_resp.text.strip()
+            # 使用 file.io 的 API，这是一个非常稳定的临时文件服务
+            response = requests.post('https://file.io', files={'file': f})
+        
+        if response.status_code == 200:
+            result_json = response.json()
+            if result_json.get("success"):
+                download_link = result_json.get("link")
+                print(f"✅ 上传成功: {download_link}")
+            else:
+                raise Exception(f"file.io 上传失败: {result_json}")
+        else:
+            raise Exception(f"上传请求失败，状态码: {response.status_code}")
 
         return {
             "status": "success",
             "message": "AI 翻唱处理完成！",
             "download_url": download_link,
-            "model_used": MODEL_NAME
+            "note": "⚠️ 注意: file.io 的链接下载一次后会自动失效 (阅后即焚)，请及时保存！"
         }
 
     except Exception as e:
         print(f"❌ 发生错误: {e}")
-        # 这里把具体的错误打印出来，方便调试
         import traceback
         traceback.print_exc()
         return {"status": "error", "message": str(e)}
