@@ -7,4 +7,3 @@ librosa
 llvmlite
 scikit-learn
 torchcrepe
-# 注意：这里已经删除了 fairseq 和 numpy，因为上面 Dockerfile 里已经装好了
